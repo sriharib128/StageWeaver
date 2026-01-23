@@ -11,11 +11,8 @@ StageWeaver solves a deceptively complex problem: how do you process thousands o
 ## 📦 Installation
 
 ```bash
-# Install from local directory
-pip install -e /path/to/StageWeaver
-
-# Or install from source
-git clone https://github.com/yourusername/StageWeaver.git
+# install from source
+git clone https://github.com/sriharib128/StageWeaver.git
 cd StageWeaver
 pip install -e .
 ```
