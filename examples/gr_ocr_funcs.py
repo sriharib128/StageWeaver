@@ -1,5 +1,5 @@
 import copy
-from src.datamodels import StageConfig
+from stageweaver import StageConfig
 
 from gr_ocr.drivers import detect, layout, doctr,textar, recognition, run_som_html_new as run_som_html
 from gr_ocr.som_html.stages import preprocess, ocr, stage1 as som_stage1, stage2 as som_stage2

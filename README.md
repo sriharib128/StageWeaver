@@ -1,8 +1,71 @@
 # StageWeaver
 
+**Author:** Srihari Bandarupalli
+
 **A production-grade parallel pipeline framework for sequential multi-stage data processing**
 
 StageWeaver solves a deceptively complex problem: how do you process thousands of items through multiple sequential stages while maintaining maximum throughput, resource efficiency, and resumability—without deadlocks, data loss, or redundant model loading?
+
+---
+
+## 📦 Installation
+
+```bash
+# Install from local directory
+pip install -e /path/to/StageWeaver
+
+# Or install from source
+git clone https://github.com/yourusername/StageWeaver.git
+cd StageWeaver
+pip install -e .
+```
+
+**Requirements:**
+- Python 3.8 or higher
+- No external dependencies (pure Python stdlib!)
+
+---
+
+## 🚀 Quick Start
+
+```python
+from stageweaver import StagedPipeline, StageConfig
+
+# Define your processing stages
+stage_configs = [
+    StageConfig(
+        name="Stage 1: Preprocessing",
+        function=preprocess_fn,
+        args={"config": "config.yaml"},
+        queue_batch_size=32,
+        queue_timeout=5.0,
+        init_fn=init_models,
+        completion_fn=check_if_done,
+        termination_fn=cleanup
+    ),
+    StageConfig(
+        name="Stage 2: Processing",
+        function=process_fn,
+        args={"output_dir": "./results"},
+        queue_batch_size=16,
+        queue_timeout=5.0,
+        init_fn=init_models,
+        completion_fn=check_if_done,
+        termination_fn=cleanup
+    ),
+]
+
+# Create and run the pipeline
+pipeline = StagedPipeline(
+    data_folder="./data",
+    stage_configs=stage_configs,
+    queue_size=1024
+)
+
+pipeline.run(log_dir="./logs")
+```
+
+See the [examples/](examples/) directory for complete working examples.
 
 ---
 
@@ -453,7 +516,7 @@ pipeline.run(log_dir="logs/run_20260102")
 ### Step 5: Enable Resumability
 
 ```python
-from src.utils import get_dummy_stage
+from stageweaver import get_dummy_stage
 
 # Stages 0-3 already complete, run only 4-6
 steps_to_check = [0, 1, 2, 3]  # Validation-only
@@ -472,6 +535,46 @@ pipeline = StagedPipeline(
 ```
 
 **Effect**: Items pass through dummy stages 0-3 (fast completion checks), then heavy processing in stages 4-6. Items failing dummy checks go to retry buffer (maybe in-flight on another worker).
+
+---
+
+## 📚 API Reference
+
+### Core Classes
+
+**`StagedPipeline`** - Main pipeline orchestrator
+- `__init__(data_folder, stage_configs, initialization_source, queue_size, logger)`
+- `run(log_dir)` - Execute the pipeline
+
+**`StageConfig`** - Stage configuration dataclass
+- `name: str` - Stage name
+- `function: Callable` - Processing function
+- `args: dict` - Arguments for the function
+- `queue_batch_size: int` - Batch size for queue reads
+- `queue_timeout: float` - Timeout for queue operations
+- `init_fn: Callable` - Initialization function
+- `completion_fn: Callable` - Completion check function
+- `termination_fn: Callable` - Cleanup function
+
+### Utility Functions
+
+**`get_dummy_stage(stage_cfg: StageConfig) -> StageConfig`**
+- Creates a validation-only version of a stage (skips processing, only checks completion)
+
+**`get_logger(name, log_dir, log_file, base_logger)`**
+- Creates configured loggers for pipeline components
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit issues or pull requests.
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 

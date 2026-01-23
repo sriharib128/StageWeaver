@@ -2,12 +2,11 @@ import os
 import logging
 import argparse
 from datetime import datetime
-from src.utils import get_dummy_stage # to get dummy stage configs which skip the processing and check only if the output_path exists
-
-from src.pipeline import StagedPipeline
-from .gr_ocr_funcs import (get_functions,
-    build_initialization_source, # to make sure step8_som_Stage1 and step9_som_Stage2 share the same init source
-    )
+from stageweaver import StagedPipeline, get_dummy_stage
+from gr_ocr_funcs import (
+    get_functions,
+    build_initialization_source,  # to make sure step8_som_Stage1 and step9_som_Stage2 share the same init source
+)
 
 def parse_args():
     parser = argparse.ArgumentParser()
