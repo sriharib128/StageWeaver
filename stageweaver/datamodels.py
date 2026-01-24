@@ -11,4 +11,4 @@ class StageConfig:
     queue_timeout: float
     init_fn: Callable
     completion_fn: Callable[[Dict, Path], bool]
-    termination_fn: Callable[[Dict]]
+    termination_fn: Callable
