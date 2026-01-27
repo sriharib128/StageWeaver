@@ -72,7 +72,7 @@ class StagedPipeline:
         self._log_stage_configs()
 
         # Group stages by their initialization source
-        self.stage_groups = self._group_stages_by_init_source()
+        self.stage_groups = self._group_stages_by_init_source(self.initialization_source, self.logger)
 
     def _log_stage_configs(self):
         """Log the stage configurations for debugging."""
@@ -94,7 +94,8 @@ class StagedPipeline:
                 f"  • termination_fn  : {cfg.termination_fn.__name__ if cfg.termination_fn else None}"
             )
 
-    def _group_stages_by_init_source(self) -> Dict[int, List[int]]:
+    @staticmethod
+    def _group_stages_by_init_source(initialization_source: List[int], logger) -> Dict[int, List[int]]:
         """
         Group stage indices by their initialization source.
         Returns: Dict mapping init_source -> list of stage indices that use it
@@ -103,12 +104,12 @@ class StagedPipeline:
         Returns: {0: [0], 1: [1], 2: [2], 3: [3, 4], 5: [5]}
         """
         groups = {}
-        for stage_idx, init_source in enumerate(self.initialization_source):
+        for stage_idx, init_source in enumerate(initialization_source):
             if init_source not in groups:
                 groups[init_source] = []
             groups[init_source].append(stage_idx)
         
-        self.logger.info(f"Stage grouping by initialization source: {groups}")
+        logger.info(f"Stage grouping by initialization source: {groups}")
         return groups
     
     def run(self, log_dir=None):

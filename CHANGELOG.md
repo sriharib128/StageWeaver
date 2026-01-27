@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-01-27
+
+- Added a `DbStagedPipeline` class in `db_pipeline.py` for database-specific staged pipelines.
+- Introduced `DbStageConfig` dataclass in `datamodels.py` for database stage configurations.
+- Implemented database connection pooling and management in `db_pipeline.py`.
+- TODO: Update README.md and documentation to include database pipeline usage.
+
+
 ## [0.1.0] - 2026-01-23
 
 ### Added

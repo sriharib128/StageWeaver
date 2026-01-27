@@ -26,8 +26,16 @@ Example usage:
 """
 
 from .pipeline import StagedPipeline
-from .datamodels import StageConfig
+from .datamodels import StageConfig, DbStageConfig
+from .db_pipeline import DbStagedPipeline
 from .utils import get_dummy_stage, get_logger
 
 __version__ = "0.1.0"
-__all__ = ["StagedPipeline", "StageConfig", "get_dummy_stage", "get_logger"]
+__all__ = [
+    "StagedPipeline", 
+    "StageConfig", 
+    "DbStagedPipeline", 
+    "DbStageConfig", 
+    "get_dummy_stage", 
+    "get_logger"
+]
