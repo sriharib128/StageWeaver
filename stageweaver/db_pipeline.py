@@ -65,9 +65,9 @@ class DbStagedPipeline:
                 f"  • termination_fn  : {cfg.termination_fn.__name__ if cfg.termination_fn else None}"
             )
         self.logger.info(
-            f"{"-"*60}\n"
+            f"{'-'*60}\n"
             f"initialisation_source = {self.initialization_source}"
-            f"{"-"*60}\n"
+            f"{'-'*60}\n"
         )
         
     # def run(self, log_dir="logs"):
@@ -112,12 +112,15 @@ class DbStagedPipeline:
         Each stage in the group will run as a thread within this process.
         ADAPTED from pipeline.py
         """
+        # Pass stage configs directly without serialization
+        stage_configs_subset = [self.stage_configs[i] for i in stage_indices]
+        
         worker_process = Process(
-            target=self.db_group_worker,
+            target=DbStagedPipeline.db_group_worker,
             args=(
                 init_source,
                 stage_indices,
-                [self.stage_configs[i] for i in stage_indices],
+                stage_configs_subset,
                 log_dir
             ),
             name=f"DBGroup-{init_source}-Stages-{stage_indices}"
@@ -131,9 +134,9 @@ class DbStagedPipeline:
             f"(init source: {init_source})"
         )
 
-        
+    
+    @staticmethod
     def db_group_worker(
-        self,
         init_source: int,
         stage_indices: List[int],
         stage_configs: List[DbStageConfig],
@@ -146,7 +149,7 @@ class DbStagedPipeline:
         Args:
             init_source: Index of the stage whose initialization to use
             stage_indices: List of stage indices running in this group
-            stage_configs: List of DbStageConfig objects for stages in this group
+            stage_configs: List of DbStageConfig objects
             log_dir: Optional directory for logs
         """
         logger = get_logger(
@@ -175,7 +178,7 @@ class DbStagedPipeline:
             for idx, stage_cfg in enumerate(stage_configs):
                 stage_idx = stage_indices[idx]
                 thread = Thread(
-                    target=self._db_stage_thread_worker,
+                    target=DbStagedPipeline._db_stage_thread_worker,
                     args=(
                         stage_idx,
                         stage_cfg,
@@ -225,7 +228,7 @@ class DbStagedPipeline:
         
         Args:
             stage_idx: Index of this stage
-            stage_cfg: DbStageConfig for this stage
+            stage_cfg: DbStageConfig object
             init_vars: Shared initialization variables (models, configs, etc.)
             logger: Logger instance
         """
