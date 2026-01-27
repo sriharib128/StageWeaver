@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Implemented database connection pooling and management in `db_pipeline.py`.
 - TODO: Update README.md and documentation to include database pipeline usage.
 
+## [0.1.1] - 2026-01-24
+
+### Fixed
+- Corrected typo in documentation for `StageConfig` parameters
 
 ## [0.1.0] - 2026-01-23
 
