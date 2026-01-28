@@ -54,21 +54,19 @@ class DbStagedPipeline:
         self.logger.info("Logging stage configurations...")
         for idx, cfg in enumerate(self.stage_configs):
 
-            args_str = json.dumps(cfg.args, indent=2, ensure_ascii=False)
+            args_str = json.dumps(cfg.args, ensure_ascii=False)
 
             self.logger.info(
+                f"{'='*60}\n"
                 f"[Stage {idx}] {cfg.name}\n"
+                f"  • stage_idx       : {idx}\n"
+                f"  • init_source     : {self.initialization_source[idx]}\n"
                 f"  • function        : {cfg.function.__name__}\n"
-                f"  • args            :\n{args_str}\n"
-                f"  • ingest_fn   : {cfg.ingest_fn.__name__ if cfg.ingest_fn else None}\n"
+                f"  • args            :{args_str}\n"
+                f"  • ingest_fn       : {cfg.ingest_fn.__name__ if cfg.ingest_fn else None}\n"
                 f"  • init_fn         : {cfg.init_fn.__name__ if cfg.init_fn else None}\n"
-                f"  • termination_fn  : {cfg.termination_fn.__name__ if cfg.termination_fn else None}"
+                f"  • termination_fn  : {cfg.termination_fn.__name__ if cfg.termination_fn else None}\n"
             )
-        self.logger.info(
-            f"{'-'*60}\n"
-            f"initialisation_source = {self.initialization_source}"
-            f"{'-'*60}\n"
-        )
         
     # def run(self, log_dir="logs"):
     def run (self, node_run_specific_log_dir):
@@ -92,19 +90,29 @@ class DbStagedPipeline:
                 ),
                 name = f"{idx}_{stage.name}_ingest_process"
             )
+            self.logger.info(
+                f"{'='*60}\n"
+                f"[Stage {idx}] {stage.name} - Starting DB Ingest Process\n"
+            )
             cur_stage_db_ingest.start()
             db_ingest_processes.append(cur_stage_db_ingest)
         
         # wait till ingestion in all the stages is done
         for process in db_ingest_processes:
             process.join()
-        
+        self.logger.info(f"{'='*60}")
+        self.logger.info("DB Ingest completed for all the stages")
+        self.logger.info("Starting DB Staged Pipeline Processing...")
+        self.logger.info(f"{'='*60}")
         for init_source, stage_indices in self.stage_groups.items():
             self._start_group_process(init_source, stage_indices, node_run_specific_log_dir)
         
         for proc in self.processes:
             proc.join()
+        
+        self.logger.info(f"{'='*60}")
         self.logger.info("Entire Pipeline Processed")
+        self.logger.info(f"{'='*60}")
 
     def _start_group_process(self, init_source: int, stage_indices: List[int], log_dir: str = None):
         """
@@ -125,14 +133,16 @@ class DbStagedPipeline:
             ),
             name=f"DBGroup-{init_source}-Stages-{stage_indices}"
         )
-        worker_process.start()
-        self.processes.append(worker_process)
+        
         
         group_type = "single-stage" if len(stage_indices) == 1 else f"multi-stage ({len(stage_indices)} stages)"
         self.logger.info(
-            f"Started {group_type} process for stages {stage_indices} "
+            f"Starting {group_type} process for stages {stage_indices} "
             f"(init source: {init_source})"
+            f"further group specific logs at db_group_{init_source}_stages_{stage_indices}.log"
         )
+        worker_process.start()
+        self.processes.append(worker_process)
 
     
     @staticmethod
@@ -159,7 +169,7 @@ class DbStagedPipeline:
             base_logger=None
         )
         
-        logger.info(f"DB Group process started for stages {stage_indices} (PID: {os.getpid()})")
+        logger.info(f"[DBGroupWorker-{init_source}] DB Group process started for stages {stage_indices} (PID: {os.getpid()})")
 
         init_vars = None
 
@@ -168,10 +178,10 @@ class DbStagedPipeline:
             if stage_configs[0].init_fn:
                 args = SimpleNamespace(**stage_configs[0].args)
                 init_vars = stage_configs[0].init_fn(args=args, log=logger, config_only=False)
-                logger.info(f"Initialization complete for stages {stage_indices} (init source: {init_source})")
+                logger.info(f"[DBGroupWorker-{init_source}] Initialization complete for stages {stage_indices} (init source: {init_source})")
             else:
                 init_vars = {}  # Empty init_vars if no init function
-                logger.info(f"No init_fn for stages {stage_indices}, using empty init_vars")
+                logger.info(f"[DBGroupWorker-{init_source}] No init_fn for stages {stage_indices}, using empty init_vars")
 
             # Start a thread for each stage in the group
             threads = []
@@ -187,27 +197,27 @@ class DbStagedPipeline:
                     ),
                     name=f"DBStage-{stage_idx}-{stage_cfg.name}-Thread"
                 )
+                logger.info(f"[DBGroupWorker-{init_source}] Starting thread for stage {stage_idx}: {stage_cfg.name}")
                 thread.start()
                 threads.append(thread)
-                logger.info(f"Started thread for stage {stage_idx}: {stage_cfg.name}")
             
             # Step 4: Wait for all threads to complete
             for thread in threads:
                 thread.join()
             
-            logger.info(f"All threads completed for stages {stage_indices}")
+            logger.info(f"[DBGroupWorker-{init_source}] All threads completed for stages {stage_indices}")
         
         except Exception as e:
-            logger.error(f"Fatal error in group process for stages {stage_indices}: {e}", exc_info=True)
+            logger.error(f"[DBGroupWorker-{init_source}] Fatal error in group process for stages {stage_indices}: {e}", exc_info=True)
         
         finally:
             # Step 5: Terminate shared resources once for the entire group
             if init_vars and stage_configs[0].termination_fn:
                 try:
                     stage_configs[0].termination_fn(init_vars)
-                    logger.info(f"Termination complete for stages {stage_indices}")
+                    logger.info(f"[DBGroupWorker-{init_source}] Termination complete for stages {stage_indices}")
                 except Exception as e:
-                    logger.error(f"Error during termination: {e}", exc_info=True)
+                    logger.error(f"[DBGroupWorker-{init_source}] Error during termination: {e}", exc_info=True)
 
     @staticmethod
     def _db_stage_thread_worker(
@@ -232,7 +242,7 @@ class DbStagedPipeline:
             init_vars: Shared initialization variables (models, configs, etc.)
             logger: Logger instance
         """
-        logger.info(f"Stage {stage_idx} thread started: {stage_cfg.name}")
+        logger.info(f"[StageThread-{stage_idx}] Stage {stage_idx} thread started: {stage_cfg.name}")
         
         try:
             # Create args namespace
@@ -241,10 +251,10 @@ class DbStagedPipeline:
             # Call the stage function - it handles all DB logic internally
             stage_cfg.function(args, init_vars)
             
-            logger.info(f"Stage {stage_idx} completed: {stage_cfg.name}")
+            logger.info(f"[StageThread-{stage_idx}] Stage {stage_idx} completed: {stage_cfg.name}")
             
         except Exception as e:
-            logger.error(f"Error in stage {stage_idx} ({stage_cfg.name}): {e}", exc_info=True)
+            logger.error(f"[StageThread-{stage_idx}] Error in stage {stage_idx} ({stage_cfg.name}): {e}", exc_info=True)
             raise
        
     

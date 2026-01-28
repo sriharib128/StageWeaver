@@ -369,15 +369,11 @@ def main():
     )
     
     try:
-        logger.info("\n" + "="*80)
-        logger.info("STARTING PIPELINE EXECUTION")
-        logger.info("="*80 + "\n")
+        # logger.info("-----STARTING PIPELINE EXECUTION-----")
         
         pipeline.run(node_run_specific_log_dir=node_run_specific_log_dir)
         
-        logger.info("\n" + "="*80)
-        logger.info("PIPELINE EXECUTION COMPLETE")
-        logger.info("="*80)
+        # logger.info("-----PIPELINE EXECUTION COMPLETE-----")
         
     except KeyboardInterrupt:
         logger.warning("\n\nGraceful shutdown initiated by user (Ctrl+C)")
