@@ -31,6 +31,10 @@ keywords = ["pipeline", "parallel", "multiprocessing", "threading", "data-proces
 Homepage = "https://github.com/sriharib128/StageWeaver"
 Documentation = "https://github.com/sriharib128/StageWeaver#readme"
 
+[tool.setuptools]
+package-dir = {"" = "src"}
+
 [tool.setuptools.packages.find]
+where = ["src"]
 include = ["stageweaver*"]
-exclude = ["examples*", "tests*", "archive*"]
+exclude = ["*.tests", "*.tests.*", "tests.*", "tests"]
