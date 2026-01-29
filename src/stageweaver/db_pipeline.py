@@ -1,4 +1,6 @@
 import json, os 
+import signal
+import threading
 import multiprocessing as mp
 from threading import Thread
 from multiprocessing import Process
@@ -172,12 +174,21 @@ class DbStagedPipeline:
         logger.info(f"[DBGroupWorker-{init_source}] DB Group process started for stages {stage_indices} (PID: {os.getpid()})")
 
         init_vars = None
+        shutdown_event = threading.Event()
+
+        def handle_shutdown(signum, frame):
+            logger.info(f"[DBGroupWorker-{init_source}] Received signal {signum}. Setting shutdown event.")
+            shutdown_event.set()
+        
+        # Register signal handlers for graceful shutdown
+        signal.signal(signal.SIGINT, handle_shutdown)
+        signal.signal(signal.SIGTERM, handle_shutdown)
 
         try:
             # Initialize once using the init_source stage's configuration
             if stage_configs[0].init_fn:
                 args = SimpleNamespace(**stage_configs[0].args)
-                init_vars = stage_configs[0].init_fn(args=args, log=logger, config_only=False)
+                init_vars = stage_configs[0].init_fn(args, logger, False)
                 logger.info(f"[DBGroupWorker-{init_source}] Initialization complete for stages {stage_indices} (init source: {init_source})")
             else:
                 init_vars = {}  # Empty init_vars if no init function
@@ -193,6 +204,7 @@ class DbStagedPipeline:
                         stage_idx,
                         stage_cfg,
                         init_vars,  # Shared init_vars across all threads in this group
+                        shutdown_event,
                         logger
                     ),
                     name=f"DBStage-{stage_idx}-{stage_cfg.name}-Thread"
@@ -224,6 +236,7 @@ class DbStagedPipeline:
         stage_idx: int,
         stage_cfg: DbStageConfig,
         init_vars: Dict[str, Any],
+        shutdown_event: threading.Event,
         logger
     ):
         """
@@ -249,7 +262,7 @@ class DbStagedPipeline:
             args = SimpleNamespace(**stage_cfg.args)
             
             # Call the stage function - it handles all DB logic internally
-            stage_cfg.function(args, init_vars)
+            stage_cfg.function(args, init_vars, shutdown_event)
             
             logger.info(f"[StageThread-{stage_idx}] Stage {stage_idx} completed: {stage_cfg.name}")
             
