@@ -71,7 +71,7 @@ class DbStagedPipeline:
             )
         
     # def run(self, log_dir="logs"):
-    def run (self, node_run_specific_log_dir):
+    def run (self, node_run_specific_log_dir, should_ingest=True):
         self.logger.info("Starting DB ingest for each of the stage")
         
         # run_id = time.strftime("%Y%m%d-%H%M%S")
@@ -79,33 +79,39 @@ class DbStagedPipeline:
 
         # node_run_specific_log_dir = os.path.join(log_dir, node_name, run_id)
         # args.logs_path = node_run_specific_log_dir
-        db_ingest_processes =[]
-        for idx, stage in enumerate(self.stage_configs):
-            cur_stage_db_ingest = Process(
-                target = stage.ingest_fn,
-                args=(
-                    stage.args["db_path"],
-                    stage.args["image_paths_source"],
-                    f"{node_run_specific_log_dir}_{idx}_{stage.args['name']}",
-                    stage.args["ingest_batch_size"],
-                    True,
-                ),
-                name = f"{idx}_{stage.name}_ingest_process"
-            )
-            self.logger.info(
-                f"{'='*60}\n"
-                f"[Stage {idx}] {stage.name} - Starting DB Ingest Process\n"
-            )
-            cur_stage_db_ingest.start()
-            db_ingest_processes.append(cur_stage_db_ingest)
-        
-        # wait till ingestion in all the stages is done
-        for process in db_ingest_processes:
-            process.join()
-        self.logger.info(f"{'='*60}")
-        self.logger.info("DB Ingest completed for all the stages")
+        if should_ingest:
+            db_ingest_processes =[]
+            for idx, stage in enumerate(self.stage_configs):
+                cur_stage_db_ingest = Process(
+                    target = stage.ingest_fn,
+                    args=(
+                        stage.args["db_path"],
+                        stage.args["image_paths_source"],
+                        f"{node_run_specific_log_dir}/{idx}_{stage.name}",
+                        stage.args["ingest_batch_size"],
+                        True,
+                    ),
+                    name = f"{idx}_{stage.name}_ingest_process"
+                )
+                self.logger.info(
+                    f"{'='*60}\n"
+                    f"[Stage {idx}] {stage.name} - Starting DB Ingest Process\n"
+                )
+                cur_stage_db_ingest.start()
+                db_ingest_processes.append(cur_stage_db_ingest)
+            
+            # wait till ingestion in all the stages is done
+            for process in db_ingest_processes:
+                process.join()
+            
+            self.logger.info(f"{'='*60}")
+            self.logger.info("DB Ingest completed for all the stages")
+
+        else:
+            self.logger.info("Skipping DB Ingest as should_ingest is False")
         self.logger.info("Starting DB Staged Pipeline Processing...")
         self.logger.info(f"{'='*60}")
+
         for init_source, stage_indices in self.stage_groups.items():
             self._start_group_process(init_source, stage_indices, node_run_specific_log_dir)
         
@@ -205,7 +211,8 @@ class DbStagedPipeline:
                         stage_cfg,
                         init_vars,  # Shared init_vars across all threads in this group
                         shutdown_event,
-                        logger
+                        logger,
+                        log_dir
                     ),
                     name=f"DBStage-{stage_idx}-{stage_cfg.name}-Thread"
                 )
@@ -237,7 +244,8 @@ class DbStagedPipeline:
         stage_cfg: DbStageConfig,
         init_vars: Dict[str, Any],
         shutdown_event: threading.Event,
-        logger
+        logger,
+        log_dir
     ):
         """
         Worker thread for a single DB-based stage.
@@ -254,15 +262,16 @@ class DbStagedPipeline:
             stage_cfg: DbStageConfig object
             init_vars: Shared initialization variables (models, configs, etc.)
             logger: Logger instance
+            log_dir: Directory for logs
         """
         logger.info(f"[StageThread-{stage_idx}] Stage {stage_idx} thread started: {stage_cfg.name}")
         
         try:
             # Create args namespace
             args = SimpleNamespace(**stage_cfg.args)
-            
+            stage_specific_log_dir = os.path.join(log_dir, f"{stage_idx}_{stage_cfg.name}")
             # Call the stage function - it handles all DB logic internally
-            stage_cfg.function(args, init_vars, shutdown_event)
+            stage_cfg.function(args, init_vars, stage_specific_log_dir, shutdown_event)
             
             logger.info(f"[StageThread-{stage_idx}] Stage {stage_idx} completed: {stage_cfg.name}")
             
