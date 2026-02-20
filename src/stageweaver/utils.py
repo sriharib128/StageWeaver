@@ -75,8 +75,11 @@ def get_logger(
     if log_dir is None and base_logger is not None:
         return base_logger
     
-    # Create or get logger
-    logger = logging.getLogger(name)
+    # Include log_dir in the logger name to avoid the global singleton collision:
+    # logging.getLogger() is process-wide, so two workers with the same `name`
+    # but different `log_dir` would otherwise share (and clobber) the same logger.
+    logger_name = f"{name}:{os.path.abspath(log_dir)}" if log_dir else name
+    logger = logging.getLogger(logger_name)
     logger.setLevel(logging.INFO)
     logger.propagate = False
 
