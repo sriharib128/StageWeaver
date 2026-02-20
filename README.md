@@ -234,4 +234,4 @@ Node B polls its DB and picks up rows as Node A marks them `state=4`. No API or 
 
 ---
 
-> **File system based variant:** See [README.md](README.md) for `StagedPipeline` — suited for streaming pipelines with less number of files and os read/write calls are extremely fast.
+> **File system based variant:** See [FILE_README.md](FILE_README.md) for `StagedPipeline` — suited for streaming pipelines with less number of files and os read/write calls are extremely fast.
