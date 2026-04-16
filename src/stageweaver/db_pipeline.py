@@ -8,10 +8,7 @@ from types import SimpleNamespace
 from typing import List, Dict, Any
 
 from .datamodels import DbStageConfig
-# from .worker import stage_thread_worker
 from .utils import get_logger
-from .pipeline import StagedPipeline
-# import time, socket
 
 class DbStagedPipeline:
     """
@@ -47,11 +44,29 @@ class DbStagedPipeline:
         self._log_stage_configs()
 
         # Group stages by their initialization source
-        self.stage_groups = StagedPipeline._group_stages_by_init_source(self.initialization_source, self.logger)
+        self.stage_groups = self._group_stages_by_init_source(self.initialization_source, self.logger)
 
         self.processes = []
         self._shutdown_requested = False
 
+    @staticmethod
+    def _group_stages_by_init_source(initialization_source: List[int], logger) -> Dict[int, List[int]]:
+        """
+        Group stage indices by their initialization source.
+        Returns: Dict mapping init_source -> list of stage indices that use it
+        
+        Example: initialization_source = [0,1,2,3,3,5]
+        Returns: {0: [0], 1: [1], 2: [2], 3: [3, 4], 5: [5]}
+        """
+        groups = {}
+        for stage_idx, init_source in enumerate(initialization_source):
+            if init_source not in groups:
+                groups[init_source] = []
+            groups[init_source].append(stage_idx)
+        
+        logger.info(f"Stage grouping by initialization source: {groups}")
+        return groups
+    
     def _log_stage_configs(self):
         self.logger.info("Logging stage configurations...")
         for idx, cfg in enumerate(self.stage_configs):
