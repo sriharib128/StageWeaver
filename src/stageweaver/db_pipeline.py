@@ -7,22 +7,16 @@ from multiprocessing import Process
 from types import SimpleNamespace
 from typing import List, Dict, Any
 
-from .datamodels import DbStageConfig
+from .datamodels import StageConfig
 from .utils import get_logger
 
 class DbStagedPipeline:
     """
-    A simplified multi-stage pipeline for DB-based stages.
-    
-    Key differences from file-based StagedPipeline:
-    - No queues: Each stage manages its own DB fetch/process/update
-    - No sentinel protocol: Stages poll until no items found
-    - Stages can run independently (even on different machines/times)
-    - Still supports resource sharing via initialization_source
+
     """
 
-    def __init__(self, stage_configs: List[DbStageConfig],
-                initialization_source: List[int] = None, logger=None):
+    def __init__(self, stage_configs: Dict[int, StageConfig],
+                log_dir, initialization_source: List[int] = None):
         
         # Set spawn method only if not already set
         try:
@@ -32,7 +26,8 @@ class DbStagedPipeline:
             pass  # Already set, ignore
         self.stage_configs = stage_configs
         self.num_stages = len(stage_configs)
-        self.logger=logger
+        self.log_dir = log_dir
+        self.logger=get_logger(self.log_dir, "StageWeaver")
         
         if initialization_source is None:
             self.initialization_source = list(range(self.num_stages))
@@ -41,6 +36,7 @@ class DbStagedPipeline:
                 raise ValueError(f"initialization_source length ({len(initialization_source)}) "
                                f"must match number of stages ({self.num_stages})")
             self.initialization_source = initialization_source
+            
         self._log_stage_configs()
 
         # Group stages by their initialization source
@@ -69,7 +65,7 @@ class DbStagedPipeline:
     
     def _log_stage_configs(self):
         self.logger.info("Logging stage configurations...")
-        for idx, cfg in enumerate(self.stage_configs):
+        for idx, cfg in self.stage_configs.items():
 
             args_str = json.dumps(cfg.args, ensure_ascii=False)
 
@@ -77,6 +73,8 @@ class DbStagedPipeline:
                 f"{'='*60}\n"
                 f"[Stage {idx}] {cfg.name}\n"
                 f"  • stage_idx       : {idx}\n"
+                f"  • upstream_stages : {cfg.upstream_stages}\n"
+                f"  • fan_in_policy   : {cfg.fan_in_policy}\n"
                 f"  • init_source     : {self.initialization_source[idx]}\n"
                 f"  • function        : {cfg.function.__name__}\n"
                 f"  • args            :{args_str}\n"
@@ -86,49 +84,21 @@ class DbStagedPipeline:
             )
         
     # def run(self, log_dir="logs"):
-    def run (self, node_run_specific_log_dir, should_ingest=True):
+    def run (self, should_ingest=True):
         self.logger.info("Starting DB ingest for each of the stage")
-        
-        # run_id = time.strftime("%Y%m%d-%H%M%S")
-        # node_name = socket.gethostname()
-
-        # node_run_specific_log_dir = os.path.join(log_dir, node_name, run_id)
-        # args.logs_path = node_run_specific_log_dir
         if should_ingest:
-            db_ingest_processes =[]
-            for idx, stage in enumerate(self.stage_configs):
-                cur_stage_db_ingest = Process(
-                    target = stage.ingest_fn,
-                    args=(
-                        stage.args["db_path"],
-                        stage.args["image_paths_source"],
-                        f"{node_run_specific_log_dir}/{idx}_{stage.name}",
-                        stage.args["ingest_batch_size"],
-                        True,
-                    ),
-                    name = f"{idx}_{stage.name}_ingest_process"
-                )
-                self.logger.info(
-                    f"{'='*60}\n"
-                    f"[Stage {idx}] {stage.name} - Starting DB Ingest Process\n"
-                )
-                cur_stage_db_ingest.start()
-                db_ingest_processes.append(cur_stage_db_ingest)
-            
-            # wait till ingestion in all the stages is done
-            for process in db_ingest_processes:
-                process.join()
-            
+            pass
             self.logger.info(f"{'='*60}")
             self.logger.info("DB Ingest completed for all the stages")
 
         else:
             self.logger.info("Skipping DB Ingest as should_ingest is False")
+
         self.logger.info("Starting DB Staged Pipeline Processing...")
         self.logger.info(f"{'='*60}")
 
         for init_source, stage_indices in self.stage_groups.items():
-            self._start_group_process(init_source, stage_indices, node_run_specific_log_dir)
+            self._start_group_process(init_source, stage_indices, self.log_dir)
         
         for proc in self.processes:
             proc.join()
@@ -156,8 +126,7 @@ class DbStagedPipeline:
             ),
             name=f"DBGroup-{init_source}-Stages-{stage_indices}"
         )
-        
-        
+          
         group_type = "single-stage" if len(stage_indices) == 1 else f"multi-stage ({len(stage_indices)} stages)"
         self.logger.info(
             f"Starting {group_type} process for stages {stage_indices} "
@@ -172,7 +141,7 @@ class DbStagedPipeline:
     def db_group_worker(
         init_source: int,
         stage_indices: List[int],
-        stage_configs: List[DbStageConfig],
+        stage_configs: List[StageConfig],
         log_dir: str = None
     ):
         """
@@ -256,7 +225,7 @@ class DbStagedPipeline:
     @staticmethod
     def _db_stage_thread_worker(
         stage_idx: int,
-        stage_cfg: DbStageConfig,
+        stage_cfg:  StageConfig,
         init_vars: Dict[str, Any],
         shutdown_event: threading.Event,
         logger,
@@ -294,8 +263,3 @@ class DbStagedPipeline:
             logger.error(f"[StageThread-{stage_idx}] Error in stage {stage_idx} ({stage_cfg.name}): {e}", exc_info=True)
             raise
        
-    
-
-            
-
-

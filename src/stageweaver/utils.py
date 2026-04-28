@@ -1,106 +1,62 @@
 import copy
 import functools
 import os, logging
-from .datamodels import StageConfig
+from typing import List
 
-def get_dummy_stage(stage_cfg: StageConfig) -> StageConfig:
+class FsyncFileHandler(logging.FileHandler):
     """
-    Create a dummy version of a stage_config whose purpose is:
-      - Skip actual stage processing.
-      - Preserve and reuse the original check_output / completion logic.
-      - Ensure init_fn and completion_fn are called in 'config-only' mode.
-      - Keep queue + args structure identical so downstream stages work.
+    Adding an os.fsync wrapper around logging.FileHandler so that even in aws fsx, logging wont be buffered.
     """
+    def emit(self, record):
+        super().emit(record)
+        self.flush()
+        os.fsync(self.stream.fileno())
+        
+def get_logger(log_dir, name):
 
-    # ---- No-op processing function (replaces actual heavy computation) ----
-    @functools.wraps(stage_cfg.function)
-    def noop_processing_fn(*args, **kwargs):
-        return None  # intentionally do nothing
-
-    # ---- Init wrapper: force config-only mode ----
-    original_init = stage_cfg.init_fn
-    @functools.wraps(original_init)
-    def config_only_init(*args, **kwargs):
-        kwargs["config_only"] = True
-        return original_init(*args, **kwargs)
-
-    # ---- Completion wrapper: run original check_output in config-only mode ----
-    original_completion = stage_cfg.completion_fn
-    @functools.wraps(original_completion)
-    def config_only_completion(*args, **kwargs):
-        kwargs["only_config"] = True
-        return original_completion(*args, **kwargs)
-
-    # ---- Termination fn becomes a no-op ----
-    @functools.wraps(stage_cfg.termination_fn)
-    def noop_termination(*args, **kwargs):
-        return None
-
-    # ---- Construct the dummy stage ----
-    return StageConfig(
-        name = f"dummy_{stage_cfg.name}",
-        function = noop_processing_fn,           # heavy work skipped
-        args = copy.deepcopy(stage_cfg.args),         # preserve structure for downstream stages
-        queue_batch_size = stage_cfg.queue_batch_size,
-        queue_timeout = stage_cfg.queue_timeout,
-        init_fn = config_only_init,              # initialize only config
-        completion_fn = config_only_completion,  # use check_output only
-        termination_fn = noop_termination,
-    )
-
-def get_logger(
-    name: str,
-    log_dir: str = None,
-    log_file: str = None,
-    base_logger = None
-):
-    """
-    Unified logger creation function for both group workers and stage workers.
-    
-    Args:
-        name: Logger name (e.g., "group_0" or "stage_1")
-        log_dir: Directory for log files. If None, uses base_logger or console.
-        log_file: Filename for the log (used only if log_dir is provided)
-        base_logger: Existing logger to use if log_dir is None (thread-safe sharing)
-    
-    Returns:
-        Logger instance
-    
-    Behavior:
-        - If log_dir provided: Creates file logger at log_dir/log_file
-        - If log_dir is None and base_logger provided: Returns base_logger (shared)
-        - If both None: Creates console logger
-    """
-    # If no log_dir and base_logger exists, share it (thread-safe)
-    if log_dir is None and base_logger is not None:
-        return base_logger
-    
-    # Include log_dir in the logger name to avoid the global singleton collision:
-    # logging.getLogger() is process-wide, so two workers with the same `name`
-    # but different `log_dir` would otherwise share (and clobber) the same logger.
-    logger_name = f"{name}:{os.path.abspath(log_dir)}" if log_dir else name
+    # Create a logger
+    # logger_name = name --> TODO this causes a lot of issue!! (something about logger being global and process-wide singletons)
+    logger_name = f"{name}:{os.path.abspath(log_dir)}"
     logger = logging.getLogger(logger_name)
-    logger.setLevel(logging.INFO)
-    logger.propagate = False
+    logger.setLevel(logging.INFO) 
 
-    # Avoid duplicate handlers
-    if logger.handlers:
-        return logger
+    logger.propagate = False # --> TODO verify what it does
+    
+    if not logger.handlers:
+        # Create a file handler that writes log messages to the file
+        # file_handler = logging.FileHandler(log_file)
 
-    if log_dir and log_file:
-        # File logger
+        # Create a log file path using the given directory and name
         os.makedirs(log_dir, exist_ok=True)
-        full_path = os.path.join(log_dir, log_file)
-        fh = logging.FileHandler(full_path, mode="w")
-        fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
-        fh.setFormatter(fmt)
-        logger.addHandler(fh)
-        logger.info(f"{name} logger initialized at {full_path}")
-    else:
-        # Console logger
-        ch = logging.StreamHandler()
-        fmt = logging.Formatter(f"%(asctime)s [%(levelname)s] {name}: %(message)s")
-        ch.setFormatter(fmt)
-        logger.addHandler(ch)
+        log_file = os.path.join(log_dir, f"{name}.log")
+
+        file_handler = FsyncFileHandler(log_file)
+        file_handler.setLevel(logging.INFO)  # Set the file handler's level to INFO
+
+        # Create a console handler to also print logs to the console
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)  # Set the console handler's level to INFO
+
+        # Define a log formatter
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        
+        # Apply the formatter to the handlers
+        file_handler.setFormatter(formatter)
+        console_handler.setFormatter(formatter)
+
+        # Add handlers to the logger
+        logger.addHandler(file_handler)
+        logger.addHandler(console_handler)
 
     return logger
+
+def get_bit_mask(stages_to_mark_1: List[int]):
+    """
+    Create a bit mask with 1s at positions specified by stages_to_mark_1 (0-based).
+    Returns:
+        An integer bit mask with 1s at the specified positions (LSB is stage 0)
+    """
+    bit_mask = 0 # since we start with 0, we dont need to total number of stages to calculate bit mask
+    for stage_idx in stages_to_mark_1:
+        bit_mask |= (1 << stage_idx)
+    return bit_mask
